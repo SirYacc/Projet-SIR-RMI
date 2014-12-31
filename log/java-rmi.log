@@ -1,0 +1,152 @@
+-------------------------------------------------------------------------------
+LANCEMENT
+-------------------------------------------------------------------------------
+
+Registry
+Dans le repertoire bin;
+java -Djava.rmi.server.codebase=file:///home/user0/Documents/git/Projet-SIR-RMI/server/bin/ -Djava.security.policy=../my.policy main.RmiRegistry
+
+Server
+Dans le repertoire bin;
+java -Djava.security.policy=../my.policy main.RmiRegistry
+
+Client
+Dans le repertoire bin;
+java -Djava.security.policy=../my.policy main.RmiRegistry
+
+CONTENU DES FICHIER MY.POLICY
+
+grant {
+	permission java.security.AllPermission;
+};
+
+-------------------------------------------------------------------------------
+CHOIX DE LA CHAINE DE CERTIFICATION POUR LE CERTIFICAT DE NOTRE SERVEUR
+-------------------------------------------------------------------------------
+
+VOCABULAIRE
+
+la relation "A -> B" signifie que les informations contenues dans le 
+certificat A permettent de vérifier l'authenticité du certificat B.
+
+-------------------------------------------------------------------------------
+
+CHAINE DE CERTIFICATION 1: 
+
+godard-tp.pem -> g1010419.tp.pem;
+
+MÉTHODE DE VÉRIFICATION DE LA CHAÎNE DE CERTIFICATION:
+
+cat godard-tp.pem > chain.pem;
+openssl verify -CAfile chain.pem g1010419.tp.pem;
+
+RÉSULTAT OBTENU:
+
+g1010419.tp.pem: OK
+
+STATUT: RETENUE
+
+-------------------------------------------------------------------------------
+
+CHAINE DE CERTIFICATION 2:
+
+godard.ca.pem -> godard-tp.ca.pem -> g1010419.tp.pem;
+
+MÉTHODE DE VÉRIFICATION DE LA CHAÎNE DE CERTIFICATION:
+
+cat godard.ca.pem godard-tp.ca.pem > chain.pem;
+openssl verify -CAfile chain.pem g1010419.tp.pem;
+
+RÉSULTAT OBTENU:
+
+g1010419.tp.pem: C = FR, ST = PACA, L = Marseille, 
+O = Internet Widgits Pty Ltd, CN = GUIEU-SERRE, 
+emailAddress = cyriaque.serre@etu.univ-amu.fr
+error 20 at 0 depth lookup:unable to get local issuer certificate
+
+RECHERCHE DE LA CAUSE:
+
+le certificat "godard-tp.ca.pem" ne permet pas de vérifier le 
+certificat "g1010419.tp.pem" alors que godard.ca.pem le vérifie.
+
+HYPOTHÈSE:
+
+la vérification a échoué car la clé publique contenue dans "godard-tp.ca.pem"
+n'est pas associée à la clé privée qui a signé "g1010419.tp.pem" alors
+que celle de "godard-tp.pem" l'est.
+
+* COMPARAISON DES CLEFS PUBLIQUES
+
+MÉTHODE:
+
+openssl x509 -in godard-tp.pem -pubkey |head -8 | tail -n +2 > c.txt;
+openssl x509 -in godard-tp.ca.pem -pubkey | head -8 | tail -n +2 > d.txt;
+diff -s c.txt d.txt;
+
+RÉSULTAT OBTENUE:
+
+Les fichiers c.txt et d.txt sont identiques.
+
+COMMENTAIRE:
+cette opération nous permet d'affirmer que les clefs publiqus sont identiques.
+Donc le problème se situe ailleurs.
+
+* COMPARAISON DES CERTIFICATS
+
+HYPOTHÈSE:
+
+les informations contenues dans "godard-tp.ca.pem" ne permettent pas de 
+vérifier "g1010419.tp.pem". Elles sont soit erronées soit manquantes.
+
+MÉTHODE:
+
+openssl x509 -text -in godard-tp.pem | head -41 > a.txt;
+openssl x509 -text -in godard-tp.ca.pem | head -41 > b.txt;
+diff a.txt b.txt;
+
+RÉSULTAT OBTENUE:
+
+ligne 4
+a.txt: Serial Number: 14329070079058082229 (0xc6db155177ef79b5)
+---
+b.txt: Serial Number: 14329070079058082230 (0xc6db155177ef79b6)
+
+ligne 6
+a.txt: Issuer: C=FR, ST=PACA, O=M2 FSI, OU=TP SIR, CN=godard TP
+---
+b.txt: Issuer: C=FR, ST=PACA, L=Marseille, O=M2 FSI, CN=godard
+
+ligne 8 et 9
+a.txt: Not Before: Nov 27 14:18:06 2014 GMT
+       Not After : Nov 26 14:18:06 2017 GMT
+---
+b.txt: Not Before: Nov 27 14:18:18 2014 GMT
+       Not After : Nov 27 14:18:18 2015 GMT
+
+ligne 10
+a.txt: Subject: C=FR, ST=PACA, O=M2 FSI, OU=TP SIR, CN=godard TP
+---
+b.txt: Subject: C=FR, ST=PACA, L=Marseille, O=M2 FSI, OU=TP SIR, CN=godard TP
+
+ligne 38
+a.txt: keyid:76:2F:58:BA:4E:DD:48:D3:E7:F8:67:78:7D:61:2B:B0:B1:C5:C6:29
+---
+b.txt: keyid:4B:17:85:6F:55:5C:6D:DE:B5:39:51:56:7F:A9:59:8B:19:86:58:A2
+
+COMMENTAIRE:
+
+La différence trouvée à la ligne 10 pourrait expliquer l'echec de
+la vérification car l'émetteur du certificat g1010419.tp.pem est défini par
+"C=FR, ST=PACA, O=M2 FSI, OU=TP SIR, CN=godard TP". Et cela ne correspond pas 
+à ce qui est renseigné dans le champ subject du certificat "godard-tp.pem"
+(Cf. ligne10/b.txt).
+
+Comme on ne possède pas la clé privée de l'autorité de certification,
+on ne peut pas modifier le certificat défaillant sans devoir  modifier 
+la chaîne de certification afin de vérifier si cette différence en est la cause.
+
+Nous choisirons donc la premiére chaîne de certification pour la suite
+du projet.
+
+STATUT: ÉCARTÉE
+
