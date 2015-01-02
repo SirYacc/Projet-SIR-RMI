@@ -1,5 +1,5 @@
 -------------------------------------------------------------------------------
-LANCEMENT
+ARCHITECTURE RMI DE BASE (AUCUNE SÉCURITÉ)
 -------------------------------------------------------------------------------
 
 Registry
@@ -23,14 +23,12 @@ grant {
 -------------------------------------------------------------------------------
 CHOIX DE LA CHAINE DE CERTIFICATION POUR LE CERTIFICAT DE NOTRE SERVEUR
 -------------------------------------------------------------------------------
-
 VOCABULAIRE
 
 la relation "A -> B" signifie que les informations contenues dans le 
 certificat A permettent de vérifier l'authenticité du certificat B.
 
 -------------------------------------------------------------------------------
-
 CHAINE DE CERTIFICATION 1: 
 
 godard-tp.pem -> g1010419.tp.pem;
@@ -47,7 +45,6 @@ g1010419.tp.pem: OK
 STATUT: RETENUE
 
 -------------------------------------------------------------------------------
-
 CHAINE DE CERTIFICATION 2:
 
 godard.ca.pem -> godard-tp.ca.pem -> g1010419.tp.pem;
@@ -136,7 +133,7 @@ b.txt: keyid:4B:17:85:6F:55:5C:6D:DE:B5:39:51:56:7F:A9:59:8B:19:86:58:A2
 COMMENTAIRE:
 
 La différence trouvée à la ligne 10 pourrait expliquer l'echec de
-la vérification car l'émetteur du certificat g1010419.tp.pem est défini par
+la vérification car l'émetteur du certificat "g1010419.tp.pem" est défini par
 "C=FR, ST=PACA, O=M2 FSI, OU=TP SIR, CN=godard TP". Et cela ne correspond pas 
 à ce qui est renseigné dans le champ subject du certificat "godard-tp.pem"
 (Cf. ligne10/b.txt).
@@ -150,3 +147,258 @@ du projet.
 
 STATUT: ÉCARTÉE
 
+-------------------------------------------------------------------------------
+I/AJOUT DE L'AUTHENTIFICATION DU SERVEUR À NOTRE ARCHITECTURE
+-------------------------------------------------------------------------------
+
+VOCABULAIRE
+
+keystore: base de donnée qui contient la clé privée et le certificat associé
+ainsi que sa chaîne de certification s'il n'est pas autosigné.
+-> permet de s'authentifier.
+
+truststore: base de donnée qui contient uniquement les certificats 
+racines des autorités de certification c'est à dire les certificats autosignés.
+-> permet d'authentifier autrui.
+
+-------------------------------------------------------------------------------
+CHANGEMENT POUR LE SERVEUR
+
+* MODIFICATION DU CODE:
+EchoImpl.java:
+on remplace
+
+public EchoImpl() throws RemoteException {
+  super();
+} 
+
+par
+
+public EchoImpl() throws RemoteException {
+  super(0,new SslRMIClientSocketFactory(),
+          new SslRMIServerSocketFactory());
+} 
+
+Par défaut, la version du protocole est TLSv1 et la suite cryptographique est
+TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA. 
+
+* CRÉATION D'UN KEYSTORE:
+
+OBJECTIF: créer un keystore au format JKS qui contient la clé privée et 
+la chaîne de certification qu'on a fabriqué précedement avec openssl.
+
+PROBLÈME: keytool ne permet pas l'importation ou l'exportation de clé privée
+au format JKS. 
+
+SOLUTION: créer un keystore au format PKCS12 et importer la totalité de 
+ces entrées dans notre keystore au format JKS.
+ 
+MÉTHODE DE CRÉATION D'UN KEYSTORE AU FORMAT PKCS12 CONTENANT LA CLÉ PRIVÉE
+ET SA CHAÎNE DE CERTIFICATION:
+
+cat privkey.pem g1010419.tp.pem godard-tp.pem > mykeycertificate.pem;
+openssl pkcs12 -export -in mykeycertificate.pem -out serverKeystore.pkcs12 -name serverkey -noiter -nomaciter;
+
+"Enter pass phrase for mykeycertificate.pem:", 
+-> phrase de passe qui protége notre clé privée.
+
+"Enter Export Password:", 
+-> choix d'un mot de passe pour protéger la base de donnée au format PKCS12.
+
+"Verifying - Enter Export Password:",
+-> confirmation du mot de passe.
+
+MÉTHODE POUR IMPORTER LE CONTENU D'UNE BASE DE DONNÉE AU FORMAT PKCS12 DANS
+UNE BASE DE DONNÉE AU FORMAT JKS:
+
+keytool -importkeystore -srckeystore serverKeystore.pkcs12 -srcstoretype PKCS12 -keystore serverKeystore.jks;
+
+"Entrez le mot de passe du fichier de clés de destination :",
+-> choix d'un mot de passe pour protéger la base de données au format JKS.
+
+"Ressaisissez le nouveau mot de passe :",
+-> confirmation du mot de passe.
+
+"Entrez le mot de passe du fichier de clés source :",
+-> mot de passe de la base de donnée au format PKCS12 qui servira aussi à
+protéger cette entrée dans la base de données au format JKS.
+
+L'entrée de l'alias serverkey a été importée.
+Commande d'import exécutée : 1 entrées importées, échec ou annulation de 0 entrées
+
+* MODIFICATION DE LA COMMANDE:
+
+java -Djava.security.policy=../my.policy \
+-Djavax.net.ssl.keyStore=../data/serverKeystore.jks \
+-Djavax.net.ssl.keyStorePassword=ilfaitbeau \
+-Djavax.net.debug=ssl \
+main.EchoImpl
+
+COMMENTAIRE: le mot de passe de l'entrée dans la base de données JKS doit 
+être celui de la base de données sinon cette commande échouera car la clé 
+ne pourra être récupérée.
+
+-------------------------------------------------------------------------------
+CHANGEMENT POUR LE CLIENT
+
+* CRÉATION DU TRUSTSTORE:
+
+OBJECTIF: créer un truststore au format JKS qui contient l'autorité de 
+certification racine de la chaîne de certification du serveur.
+
+MÉTHODE:
+
+keytool -import -file godard-tp.pem -alias godardtp -keystore clientTruststore.jks
+
+"Entrez le mot de passe du fichier de clés :", 
+-> choix d'un mot de passe pour protéger la base de données.
+
+"Ressaisissez le nouveau mot de passe :",
+-> confirmation du mot de passe.
+
+* MODIFICATION DE LA COMMANDE:
+
+java -Djava.security.policy=../my.policy \
+-Djavax.net.ssl.trustStore=../data/clientTruststore.jks \
+-Djavax.net.ssl.trustStorePassword=cocolasticot \
+main.EchoClient hello
+
+-------------------------------------------------------------------------------
+CHANGEMENT POUR LE REGISTRY
+
+* CRÉATION DU TRUSTSTORE:
+
+OBJECTIF: créer un truststore au format JKS qui contient l'autorité de 
+certification racine de la chaîne de certification du serveur.
+
+MÉTHODE: (Cf. I/client/création du truststore/méthode).
+
+* MODIFICATION DE LA COMMANDE:
+
+java -Djava.rmi.server.codebase=file:///home/user0/Documents/git/\
+Projet-SIR-RMI/server/bin/ \
+-Djava.security.policy=../my.policy \
+-Djavax.net.ssl.trustStore=../data/registryTruststore.jks \
+-Djavax.net.ssl.trustStorePassword=cocolasticot \
+main.RmiRegistry
+
+-------------------------------------------------------------------------------
+II/AJOUT DE L'AUTHENTIFICATION DU CLIENT ET DU REGISTRY À NOTRE ARCHITECTURE
+-------------------------------------------------------------------------------
+CHANGEMENT POUR LE SERVEUR
+
+* MODIFICATION DU CODE:
+EchoImpl.java:
+on remplace
+
+public EchoImpl() throws RemoteException {
+  super(0,new SslRMIClientSocketFactory(),
+          new SslRMIServerSocketFactory());
+} 
+
+par
+
+public EchoImpl() throws RemoteException {
+  super(0,new SslRMIClientSocketFactory(),
+          new SslRMIServerSocketFactory(null,null,true));
+} 
+
+* CRÉATION DU TRUSTSTORE:
+
+OBJECTIF: créer un truststore au format JKS qui contient l'autorité de 
+certification racine de la chaîne de certification du client et du registry.
+
+MÉTHODE: (Cf. I/client/création du truststore/méthode).
+
+* MODIFICATION DE LA COMMANDE:
+
+java -Djava.security.policy=../my.policy \
+-Djavax.net.ssl.keyStore=../data/serverKeystore.jks \
+-Djavax.net.ssl.keyStorePassword=ilfaitbeau \
+-Djavax.net.ssl.trustStore=../data/serverTruststore.jks \
+-Djavax.net.ssl.trustStorePassword=cocolasticot \
+-Djavax.net.debug=ssl \
+main.EchoImpl
+
+-------------------------------------------------------------------------------
+CHANGEMENT POUR LE CLIENT
+
+* CRÉATION D'UN KEYSTORE:
+
+OBJECTIF: créer un keystore au format JKS qui contient sa clé privée et 
+sa chaîne de certification associée.
+
+MÉTHODE:
+
+keytool -genkey -keyalg RSA -keysize 2048 -alias clientKey \
+-keystore clientKeystore.jks
+
+Entrez le mot de passe du fichier de clés :  
+Ressaisissez le nouveau mot de passe : 
+Quels sont vos nom et prénom ?
+  [Unknown]:  client
+Quel est le nom de votre unité organisationnelle ?
+  [Unknown]:  m2 fsi
+Quel est le nom de votre entreprise ?
+  [Unknown]:  amu
+Quel est le nom de votre ville de résidence ?
+  [Unknown]:  marseille
+Quel est le nom de votre état ou province ?
+  [Unknown]:  paca
+Quel est le code pays à deux lettres pour cette unité ?
+  [Unknown]:  fr
+Est-ce CN=client, OU=m2 fsi, O=amu, L=marseille, ST=paca, C=fr ?
+  [non]:  oui
+
+Entrez le mot de passe de la clé pour <clientKey>
+	(appuyez sur Entrée s'il s'agit du mot de passe du fichier de clés) :
+
+* EXPORTATION DU CERTIFICAT AUTOSIGNÉ AU FORMAT PEM.
+
+MÉTHODE:
+
+keytool -export -rfc -alias clientKey -file clientCert.pem \
+-keystore clientKeystore.jks
+
+ATTENTION: la commande retourne le premier certificat de la chaîne de 
+certification associée qui est toujours le certificat contenant 
+la clé publique associé à la clé privée de l'entrée. Donc, si la longueur 
+de la chaîne de certification associé à l'entrée est supérieur à 1, on 
+ne peut pas récupérer le certificat de l'autorité racine avec cette 
+commande.
+
+* MODIFICATION DE LA COMMANDE:
+
+java -Djava.security.policy=../my.policy \
+-Djavax.net.ssl.keyStore=../data/clientKeystore.jks \
+-Djavax.net.ssl.keyStorePassword=ilfaitbeau \
+-Djavax.net.ssl.trustStore=../data/clientTruststore.jks \
+-Djavax.net.ssl.trustStorePassword=cocolasticot \
+main.EchoClient hello
+
+-------------------------------------------------------------------------------
+CHANGEMENT POUR LE REGISTRY
+
+* CRÉATION D'UN KEYSTORE:
+
+OBJECTIF: créer un keystore au format JKS qui contient sa clé privée et 
+sa chaîne de certification associée.
+
+MÉTHODE: (Cf. II/client/création du keystore/méthode).
+
+* EXPORTATION DU CERTIFICAT AUTOSIGNÉ AU FORMAT PEM.
+
+(Cf. II/client/exportation du certificat autosigné au format pem).
+
+* MODIFICATION DE LA COMMANDE:
+
+java -Djava.rmi.server.codebase=file:///home/user0/Documents/git/\
+Projet-SIR-RMI/server/bin/ \
+-Djava.security.policy=../my.policy \
+-Djavax.net.ssl.keyStore=../data/registryKeystore.jks \
+-Djavax.net.ssl.keyStorePassword=ilfaitbeau \
+-Djavax.net.ssl.trustStore=../data/registryTruststore.jks \
+-Djavax.net.ssl.trustStorePassword=cocolasticot \
+main.RmiRegistry
+
+-------------------------------------------------------------------------------

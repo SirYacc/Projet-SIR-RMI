@@ -12,7 +12,8 @@ public class EchoImpl extends UnicastRemoteObject implements Echo {
 	private static final long serialVersionUID = 1L;
 
 	public EchoImpl() throws RemoteException {
-		super(0,new SslRMIClientSocketFactory(),new SslRMIServerSocketFactory());
+		super(0,new SslRMIClientSocketFactory(),
+				new SslRMIServerSocketFactory(null,null,true));
 	}
 
 	public String echo(String str) throws RemoteException {
