@@ -180,7 +180,8 @@ public EchoImpl() throws RemoteException {
 } 
 
 Par défaut, la version du protocole est TLSv1 et la suite cryptographique est
-TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA. 
+TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA. Cette dernière est la meilleure suite 
+dont on dispose utilisant nos certificats (RSA,sha256). 
 
 * CRÉATION D'UN KEYSTORE:
 
@@ -402,3 +403,79 @@ Projet-SIR-RMI/server/bin/ \
 main.RmiRegistry
 
 -------------------------------------------------------------------------------
+III/AJOUT DE LA PROTECTION DU REGISTRY À NOTRE ARCHITECTURE
+-------------------------------------------------------------------------------
+CHANGEMENT POUR LE SERVEUR
+
+* MODIFICATION DU CODE:
+EchoImpl.java:
+on remplace
+
+public static void main (String args[]) throws Exception {
+  ...
+Registry registry = LocateRegistry.getRegistry(null, 1099);
+  ...
+}
+
+par
+
+public static void main (String args[]) throws Exception {
+  ...
+Registry registry = LocateRegistry.getRegistry(null, 1099, 
+		new SslRMIClientSocketFactory());
+  ...
+}
+
+-------------------------------------------------------------------------------
+CHANGEMENT POUR LE CLIENT
+
+* MODIFICATION DU CODE:
+EchoClient.java:
+on remplace
+
+public static void main (String args[]) throws Exception {
+  ...
+Registry registry = LocateRegistry.getRegistry(null, 1099);
+  ...
+}
+
+par
+
+public static void main (String args[]) throws Exception {
+  ...
+Registry registry = LocateRegistry.getRegistry(null, 1099, 
+		new SslRMIClientSocketFactory());
+  ...
+}
+
+* AJOUT DU CERTIFICAT AUTOSIGNÉ DU REGISTRY DANS LE TRUSTSTORE:
+
+MÉTHODE: (Cf. I/client/création du truststore/méthode).
+
+-------------------------------------------------------------------------------
+CHANGEMENT POUR LE REGISTRY
+
+* MODIFICATION DU CODE:
+RmiRegistry.java:
+on remplace
+
+public static void main (String args[]) throws Exception {
+  ...
+LocateRegistry.createRegistry(1099);
+  ...
+}
+
+par
+
+public static void main (String args[]) throws Exception {
+  ...
+LocateRegistry.createRegistry(1099, new SslRMIClientSocketFactory(),
+                                    new SslRMIServerSocketFactory(null, 
+                                                                  null, 
+                                                                  true));
+  ...
+}
+
+* AJOUT DU CERTIFICAT AUTOSIGNÉ DU CLIENT DANS LE TRUSTSTORE:
+
+MÉTHODE: (Cf. I/client/création du truststore/méthode).

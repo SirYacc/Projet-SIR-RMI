@@ -26,7 +26,8 @@ public class EchoImpl extends UnicastRemoteObject implements Echo {
 	
 	public static void main (String args[]) throws Exception {
 		System.setSecurityManager(new RMISecurityManager());
-		Registry registry = LocateRegistry.getRegistry(null, 1099);
+		Registry registry = LocateRegistry.getRegistry(null, 1099, 
+				new SslRMIClientSocketFactory());
 		EchoImpl obj = new EchoImpl();
 		registry.rebind("rmi://localhost/EchoServer", obj);
 		System.out.println("EchoServer bound in registry");
