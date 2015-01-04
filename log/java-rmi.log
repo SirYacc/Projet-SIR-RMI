@@ -179,10 +179,6 @@ public EchoImpl() throws RemoteException {
           new SslRMIServerSocketFactory());
 } 
 
-Par défaut, la version du protocole est TLSv1 et la suite cryptographique est
-TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA. Cette dernière est la meilleure suite 
-dont on dispose utilisant nos certificats (RSA,sha256). 
-
 * CRÉATION D'UN KEYSTORE:
 
 OBJECTIF: créer un keystore au format JKS qui contient la clé privée et 
@@ -304,6 +300,11 @@ public EchoImpl() throws RemoteException {
           new SslRMIServerSocketFactory(null,null,true));
 } 
 
+COMMENTAIRE: par défaut en java 7,la version du protocole est TLSv1 et 
+la suite cryptographique négociée est TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA. 
+Cette dernière est la meilleure suite dont on dispose utilisant notre 
+type de certificats (clé publique: RSA).
+
 * CRÉATION DU TRUSTSTORE:
 
 OBJECTIF: créer un truststore au format JKS qui contient l'autorité de 
@@ -413,7 +414,7 @@ on remplace
 
 public static void main (String args[]) throws Exception {
   ...
-Registry registry = LocateRegistry.getRegistry(null, 1099);
+  Registry registry = LocateRegistry.getRegistry(null, 1099);
   ...
 }
 
@@ -421,7 +422,7 @@ par
 
 public static void main (String args[]) throws Exception {
   ...
-Registry registry = LocateRegistry.getRegistry(null, 1099, 
+  Registry registry = LocateRegistry.getRegistry(null, 1099, 
 		new SslRMIClientSocketFactory());
   ...
 }
@@ -435,7 +436,7 @@ on remplace
 
 public static void main (String args[]) throws Exception {
   ...
-Registry registry = LocateRegistry.getRegistry(null, 1099);
+  Registry registry = LocateRegistry.getRegistry(null, 1099);
   ...
 }
 
@@ -443,7 +444,7 @@ par
 
 public static void main (String args[]) throws Exception {
   ...
-Registry registry = LocateRegistry.getRegistry(null, 1099, 
+  Registry registry = LocateRegistry.getRegistry(null, 1099, 
 		new SslRMIClientSocketFactory());
   ...
 }
@@ -461,7 +462,7 @@ on remplace
 
 public static void main (String args[]) throws Exception {
   ...
-LocateRegistry.createRegistry(1099);
+  LocateRegistry.createRegistry(1099);
   ...
 }
 
@@ -469,13 +470,316 @@ par
 
 public static void main (String args[]) throws Exception {
   ...
-LocateRegistry.createRegistry(1099, new SslRMIClientSocketFactory(),
-                                    new SslRMIServerSocketFactory(null, 
-                                                                  null, 
-                                                                  true));
+  LocateRegistry.createRegistry(1099, new SslRMIClientSocketFactory(),
+                                      new SslRMIServerSocketFactory(null, 
+                                                                    null, 
+                                                                    true));
   ...
 }
 
 * AJOUT DU CERTIFICAT AUTOSIGNÉ DU CLIENT DANS LE TRUSTSTORE:
 
 MÉTHODE: (Cf. I/client/création du truststore/méthode).
+
+-------------------------------------------------------------------------------
+IV/AMÉLIORATION DE LA SÉCURITÉ DE NOTRE ARCHITECTURE PAR L'UTILISATION
+   DE TLS 1.2 AU LIEU DE TLS 1.0. 
+-------------------------------------------------------------------------------
+CHANGEMENT POUR LE SERVEUR
+
+* MODIFICATION DU CODE:
+EchoImpl.java:
+on remplace
+
+public EchoImpl() throws RemoteException {
+  super(0,new SslRMIClientSocketFactory(),
+          new SslRMIServerSocketFactory(null,null,true));
+} 
+
+par
+
+public EchoImpl() throws RemoteException {
+  super(0,new SslRMIClientSocketFactory(),
+          new SslRMIServerSocketFactory(
+                 null,
+                 new String[] {"TLSv1.2"},
+                 true));
+} 
+
+
+* MODIFICATION DE LA COMMANDE:
+
+java -Djava.security.policy=../my.policy \
+-Djavax.net.ssl.keyStore=../data/serverKeystore.jks \
+-Djavax.net.ssl.keyStorePassword=ilfaitbeau \
+-Djavax.net.ssl.trustStore=../data/serverTruststore.jks \
+-Djavax.net.ssl.trustStorePassword=cocolasticot \
+-Djavax.rmi.ssl.client.enabledProtocols=TLSv1.2 \
+-Djavax.net.debug=ssl \
+main.EchoImpl
+
+-------------------------------------------------------------------------------
+CHANGEMENT POUR LE CLIENT
+
+* MODIFICATION DE LA COMMANDE:
+
+java -Djava.security.policy=../my.policy \
+-Djavax.net.ssl.keyStore=../data/clientKeystore.jks \
+-Djavax.net.ssl.keyStorePassword=ilfaitbeau \
+-Djavax.net.ssl.trustStore=../data/clientTruststore.jks \
+-Djavax.net.ssl.trustStorePassword=cocolasticot \
+-Djavax.rmi.ssl.client.enabledProtocols=TLSv1.2 \
+main.EchoClient hello
+
+-------------------------------------------------------------------------------
+CHANGEMENT POUR LE REGISTRY
+
+* MODIFICATION DU CODE:
+RmiRegistry.java:
+on remplace
+
+public static void main (String args[]) throws Exception {
+  ...
+  LocateRegistry.createRegistry(
+                   1099,
+                   new SslRMIClientSocketFactory(),
+                   new SslRMIServerSocketFactory(
+                         null, 
+                         null, 
+                         true));
+  ...
+}
+
+par
+
+public static void main (String args[]) throws Exception {
+  ...
+  LocateRegistry.createRegistry(
+                   1099,
+                   new SslRMIClientSocketFactory(),
+                   new SslRMIServerSocketFactory(
+                         null, 
+                         new String[] {"TLSv1.2"}, 
+                         true));
+  ...
+}
+
+
+* MODIFICATION DE LA COMMANDE:
+
+java -Djava.rmi.server.codebase=file:///home/user0/Documents/git/\
+Projet-SIR-RMI/server/bin/ \
+-Djava.security.policy=../my.policy \
+-Djavax.net.ssl.keyStore=../data/registryKeystore.jks \
+-Djavax.net.ssl.keyStorePassword=ilfaitbeau \
+-Djavax.net.ssl.trustStore=../data/registryTruststore.jks \
+-Djavax.net.ssl.trustStorePassword=cocolasticot \
+-Djavax.rmi.ssl.client.enabledProtocols=TLSv1.2 \
+-Djavax.net.debug=ssl \
+main.RmiRegistry
+
+-------------------------------------------------------------------------------
+V/AMÉLIORATION DE LA SÉCURITÉ DE NOTRE ARCHITECTURE PAR L'UTILISATION
+  DE SUITES CRYPTOGRAPHIQUES PLUS ROBUSTES
+-------------------------------------------------------------------------------
+OBJECTIF:
+
+Utiliser des suites cryptographiques utilisant des tailles de clés 
+plus grandes pour leur algorithme de chiffrement symétrique. 
+comme par exemple, la suite TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA 
+afin d'améliorer la confidentialité des données échangées.
+
+PROBLÈME:
+
+par défaut,les suites cryptographique proposées sont
+
+[TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA,
+ TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA, TLS_RSA_WITH_AES_128_CBC_SHA,
+ TLS_ECDH_ECDSA_WITH_AES_128_CBC_SHA, TLS_ECDH_RSA_WITH_AES_128_CBC_SHA,
+ TLS_DHE_RSA_WITH_AES_128_CBC_SHA, TLS_DHE_DSS_WITH_AES_128_CBC_SHA,
+ TLS_ECDHE_ECDSA_WITH_RC4_128_SHA, TLS_ECDHE_RSA_WITH_RC4_128_SHA,
+ SSL_RSA_WITH_RC4_128_SHA, TLS_ECDH_ECDSA_WITH_RC4_128_SHA,
+ TLS_ECDH_RSA_WITH_RC4_128_SHA, TLS_ECDHE_ECDSA_WITH_3DES_EDE_CBC_SHA,
+ TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA, SSL_RSA_WITH_3DES_EDE_CBC_SHA,
+ TLS_ECDH_ECDSA_WITH_3DES_EDE_CBC_SHA, TLS_ECDH_RSA_WITH_3DES_EDE_CBC_SHA,
+ SSL_DHE_RSA_WITH_3DES_EDE_CBC_SHA, SSL_DHE_DSS_WITH_3DES_EDE_CBC_SHA,
+ SSL_RSA_WITH_RC4_128_MD5, TLS_EMPTY_RENEGOTIATION_INFO_SCSV]
+
+donc le mieux qu'on puisse négocier avec notre type de certificat 
+est TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA.
+
+CAUSE:
+
+java limite la taille des clés de certains algorithme de chiffrement
+comme on peut le constater à la lecture du fichier "default_local.policy"
+qui se trouve dans l'archive "jdk1.7.0_71/jre/lib/security/local_policy.jar"
+et dont voici le contenu:
+
+grant {
+    permission javax.crypto.CryptoPermission "DES", 64;
+    permission javax.crypto.CryptoPermission "DESede", *;
+    permission javax.crypto.CryptoPermission "RC2", 128,
+                                     "javax.crypto.spec.RC2ParameterSpec", 128;
+    permission javax.crypto.CryptoPermission "RC4", 128;
+    permission javax.crypto.CryptoPermission "RC5", 128,
+          "javax.crypto.spec.RC5ParameterSpec", *, 12, *;
+    permission javax.crypto.CryptoPermission "RSA", *;
+    permission javax.crypto.CryptoPermission *, 128;
+};
+
+SOLUTION:
+
+modifier la politique de sécurité de java concernant la cryptographie.
+
+MÉTHODE:
+
+* télécharger l'archive "UnlimitedJCEPolicyJDK7.zip" dans le répertoire 
+"jdk1.7.0_71/jre/lib/security/"
+lien: http://www.oracle.com/technetwork/java/javase/downloads/jce-7-download-432124.html
+
+* unzip "UnlimitedJCEPolicyJDK7.zip";
+  mv local_policy.jar local_policy.bak.jar;
+  cp UnlimitedJCEPolicy/local_policy.jar ./;
+  rm -r UnlimitedJCEPolicy.zip UnlimitedJCEPolicy/;
+
+maintenant la taille des clés n'est plus limité car la politique de 
+sécurité de java pour la cryptographie donne maintenant tous les droits:
+
+grant {
+    // There is no restriction to any algorithms.
+    permission javax.crypto.CryptoAllPermission;
+};
+
+RÉSULTAT:
+
+Voici les suites cryptographiques qu'on nous propose par défaut:
+
+[TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA, TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA,
+ TLS_RSA_WITH_AES_256_CBC_SHA, TLS_ECDH_ECDSA_WITH_AES_256_CBC_SHA,
+ TLS_ECDH_RSA_WITH_AES_256_CBC_SHA, TLS_DHE_RSA_WITH_AES_256_CBC_SHA,
+ TLS_DHE_DSS_WITH_AES_256_CBC_SHA, TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA,
+ TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA, TLS_RSA_WITH_AES_128_CBC_SHA,
+ TLS_ECDH_ECDSA_WITH_AES_128_CBC_SHA, TLS_ECDH_RSA_WITH_AES_128_CBC_SHA,
+ TLS_DHE_RSA_WITH_AES_128_CBC_SHA, TLS_DHE_DSS_WITH_AES_128_CBC_SHA,
+ TLS_ECDHE_ECDSA_WITH_RC4_128_SHA, TLS_ECDHE_RSA_WITH_RC4_128_SHA,
+ SSL_RSA_WITH_RC4_128_SHA, TLS_ECDH_ECDSA_WITH_RC4_128_SHA,
+ TLS_ECDH_RSA_WITH_RC4_128_SHA, TLS_ECDHE_ECDSA_WITH_3DES_EDE_CBC_SHA,
+ TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA, SSL_RSA_WITH_3DES_EDE_CBC_SHA,
+ TLS_ECDH_ECDSA_WITH_3DES_EDE_CBC_SHA, TLS_ECDH_RSA_WITH_3DES_EDE_CBC_SHA,
+ SSL_DHE_RSA_WITH_3DES_EDE_CBC_SHA, SSL_DHE_DSS_WITH_3DES_EDE_CBC_SHA,
+ SSL_RSA_WITH_RC4_128_MD5, TLS_EMPTY_RENEGOTIATION_INFO_SCSV]
+
+nous pouvons désormais négocier des suites cryptographiques à base 
+d'AES-256 qui on l'avantage d'être plus difficile à casser.
+
+la liste des suites cryptographiques supportés par java 7:
+http://docs.oracle.com/javase/7/docs/technotes/guides/security/SunProviders.html
+à "The SunJSSE Provider/Cipher Suites".
+
+-------------------------------------------------------------------------------
+VI/UTILISATION DE LA SUITE TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA384
+-------------------------------------------------------------------------------
+CHANGEMENT POUR LE SERVEUR
+
+* MODIFICATION DU CODE:
+EchoImpl.java:
+on remplace
+
+public EchoImpl() throws RemoteException {
+public EchoImpl() throws RemoteException {
+  super(0,new SslRMIClientSocketFactory(),
+          new SslRMIServerSocketFactory(
+                 null,
+                 new String[] {"TLSv1.2"},
+                 true));
+} 
+
+par
+
+public EchoImpl() throws RemoteException {
+  super(0,new SslRMIClientSocketFactory(),
+          new SslRMIServerSocketFactory(
+                 new String[] {"TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA384"},
+                 new String[] {"TLSv1.2"},
+                 true));
+} 
+
+
+* MODIFICATION DE LA COMMANDE:
+
+java -Djava.security.policy=../my.policy \
+-Djavax.net.ssl.keyStore=../data/serverKeystore.jks \
+-Djavax.net.ssl.keyStorePassword=ilfaitbeau \
+-Djavax.net.ssl.trustStore=../data/serverTruststore.jks \
+-Djavax.net.ssl.trustStorePassword=cocolasticot \
+-Djavax.rmi.ssl.client.enabledProtocols=TLSv1.2 \
+-Djavax.rmi.ssl.client.\
+enabledCipherSuites=TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA384 \
+-Djavax.net.debug=ssl \
+main.EchoImpl
+
+-------------------------------------------------------------------------------
+CHANGEMENT POUR LE CLIENT
+
+* MODIFICATION DE LA COMMANDE:
+
+java -Djava.security.policy=../my.policy \
+-Djavax.net.ssl.keyStore=../data/clientKeystore.jks \
+-Djavax.net.ssl.keyStorePassword=ilfaitbeau \
+-Djavax.net.ssl.trustStore=../data/clientTruststore.jks \
+-Djavax.net.ssl.trustStorePassword=cocolasticot \
+-Djavax.rmi.ssl.client.enabledProtocols=TLSv1.2 \
+-Djavax.rmi.ssl.client.\
+enabledCipherSuites=TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA384 \
+main.EchoClient hello
+
+-------------------------------------------------------------------------------
+CHANGEMENT POUR LE REGISTRY
+
+* MODIFICATION DU CODE:
+RmiRegistry.java:
+on remplace
+
+public static void main (String args[]) throws Exception {
+  ...
+  LocateRegistry.createRegistry(
+                   1099,
+                   new SslRMIClientSocketFactory(),
+                   new SslRMIServerSocketFactory(
+                         null, 
+                         new String[] {"TLSv1.2"}, 
+                         true));
+  ...
+}
+
+par
+
+public static void main (String args[]) throws Exception {
+  ...
+  LocateRegistry.createRegistry(
+                   1099,
+                   new SslRMIClientSocketFactory(),
+                   new SslRMIServerSocketFactory(
+                         new String[] {"TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA384", 
+                         new String[] {"TLSv1.2"}, 
+                         true));
+  ...
+}
+
+
+* MODIFICATION DE LA COMMANDE:
+
+java -Djava.rmi.server.codebase=file:///home/user0/Documents/git/\
+Projet-SIR-RMI/server/bin/ \
+-Djava.security.policy=../my.policy \
+-Djavax.net.ssl.keyStore=../data/registryKeystore.jks \
+-Djavax.net.ssl.keyStorePassword=ilfaitbeau \
+-Djavax.net.ssl.trustStore=../data/registryTruststore.jks \
+-Djavax.net.ssl.trustStorePassword=cocolasticot \
+-Djavax.rmi.ssl.client.enabledProtocols=TLSv1.2 \
+-Djavax.rmi.ssl.client.\
+enabledCipherSuites=TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA384 \
+-Djavax.net.debug=ssl \
+main.RmiRegistry
+
+-------------------------------------------------------------------------------

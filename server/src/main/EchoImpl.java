@@ -13,7 +13,10 @@ public class EchoImpl extends UnicastRemoteObject implements Echo {
 
 	public EchoImpl() throws RemoteException {
 		super(0,new SslRMIClientSocketFactory(),
-				new SslRMIServerSocketFactory(null,null,true));
+				new SslRMIServerSocketFactory(
+						new String[] {"TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA384"},
+						//null,
+						new String[] {"TLSv1.2"},true));
 	}
 
 	public String echo(String str) throws RemoteException {
