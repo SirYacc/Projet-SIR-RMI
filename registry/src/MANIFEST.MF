@@ -1,0 +1,4 @@
+Manifest-Version: 1.0
+Main-Class: RmiRegistry
+Created-By: 1.7.0_45 (Oracle Corporation)
+

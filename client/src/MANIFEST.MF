@@ -1,0 +1,4 @@
+Manifest-Version: 1.0
+Main-Class: EchoClient
+Created-By: 1.7.0_45 (Oracle Corporation)
+
